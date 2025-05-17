@@ -1,4 +1,6 @@
 import React from 'react';
+import { useEffect, useState } from 'react';
+import cloudCredentials from '@configurations/cloudCredentials';
 
 interface SettingsViewProps {
   formData: {
@@ -19,6 +21,27 @@ interface SettingsViewProps {
 }
 
 export function SettingsView({ formData, handleInputChange }: SettingsViewProps) {
+  
+  useEffect(() => {
+    // Find Prisma Cloud credentials
+    const prismaCloud = cloudCredentials.find(cred => cred.name === 'PRISMA_CLOUD');
+    if (prismaCloud) {
+      handleInputChange('prismaCloud', 'apiUrl', prismaCloud.apiUrl);
+      handleInputChange('prismaCloud', 'computeConsoleUrl', prismaCloud.consoleUrl);
+      handleInputChange('prismaCloud', 'accessKey', prismaCloud.accessKey);
+      handleInputChange('prismaCloud', 'secretKey', prismaCloud.secretKey);
+      handleInputChange('prismaCloud', 'tenantId', prismaCloud.tenantId);
+    }
+    
+    // Find Cortex Cloud credentials
+    const cortexCloud = cloudCredentials.find(cred => cred.name === 'CORTEX_CLOUD');
+    if (cortexCloud) {
+      handleInputChange('cortexCloud', 'tenantUrl', cortexCloud.apiUrl);
+      handleInputChange('cortexCloud', 'accessKey', cortexCloud.accessKey);
+      handleInputChange('cortexCloud', 'keyId', cortexCloud.secretKey);
+    }
+  }, []);
+
   return (
     <div className="settings-container">
       <div className="settings-section">
@@ -50,36 +73,12 @@ export function SettingsView({ formData, handleInputChange }: SettingsViewProps)
           </div>
           <div className="form-group">
             <label>
-              Compute Console URL <span className="required">*</span>
-              <span className="info-icon">ⓘ</span>
-            </label>
-            <input
-              type="text"
-              placeholder="Enter URL"
-              value={formData.prismaCloud.computeConsoleUrl}
-              onChange={(e) => handleInputChange('prismaCloud', 'computeConsoleUrl', e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>
-              Tenant ID <span className="required">*</span>
-              <span className="info-icon">ⓘ</span>
-            </label>
-            <input
-              type="text"
-              placeholder="Enter tenant ID"
-              value={formData.prismaCloud.tenantId}
-              onChange={(e) => handleInputChange('prismaCloud', 'tenantId', e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>
               Access Key <span className="required">*</span>
               <span className="info-icon">ⓘ</span>
             </label>
             <input
               type="text"
-              placeholder="Select issue severity"
+              placeholder="Enter access key"
               value={formData.prismaCloud.accessKey}
               onChange={(e) => handleInputChange('prismaCloud', 'accessKey', e.target.value)}
             />
@@ -120,8 +119,8 @@ export function SettingsView({ formData, handleInputChange }: SettingsViewProps)
               <span className="info-icon">ⓘ</span>
             </label>
             <input
-              type="text"
-              placeholder="Enter URL"
+              type="password"
+              placeholder="Enter access key"
               value={formData.cortexCloud.accessKey}
               onChange={(e) => handleInputChange('cortexCloud', 'accessKey', e.target.value)}
             />
