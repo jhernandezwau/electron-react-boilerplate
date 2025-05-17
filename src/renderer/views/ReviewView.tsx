@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import PrismaAPIClient from '@configurations/prisma_client';
+import CortexAPIClient from '@configurations/cortex_client';
 
 interface ReviewViewProps {
   formData: {
@@ -62,42 +64,78 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
   // Handle migration start
   useEffect(() => {
     const handleStartMigration = () => {
-      console.log('Starting migration...');
-      setIsAnimating(true);
       
-      // Start a "thread" for each selected item
-      itemStatuses.forEach((item) => {
-        const processingTime = Math.floor(Math.random() * 9000) + 1000; // Random time between 1-10 seconds
-        
-        // Update status to in_progress
-        setItemStatuses(prev => prev.map(status => 
-          status.id === item.id 
-            ? { ...status, status: 'in_progress' as const }
-            : status
-        ));
+      
+      console.log('Starting migration...');
 
-        // Simulate progress updates
-        let currentProgress = 0;
-        const intervalTime = processingTime / 100; // Split total time into 100 updates
+      console.log('Trying to login to Prisma Cloud...');
 
-        const progressInterval = setInterval(() => {
-          currentProgress += 1;
-          
-          setItemStatuses(prev => prev.map(status => 
-            status.id === item.id 
-              ? { 
-                  ...status, 
-                  progress: Math.min(currentProgress, 100),
-                  status: currentProgress >= 100 ? 'completed' as const : status.status
-                }
-              : status
-          ));
-
-          if (currentProgress >= 100) {
-            clearInterval(progressInterval);
-          }
-        }, intervalTime);
+      const client = new PrismaAPIClient({
+        accessKey: formData.prismaCloud.accessKey,
+        secretKey: formData.prismaCloud.secretKey,
+        baseURL:   formData.prismaCloud.apiUrl
       });
+
+      client.makeLoginRequest().then(response => {
+        console.log('Prisma Cloud login response:', response);
+        const token = response.data.token;
+        console.log('Prisma Cloud token:', token);
+      })
+      .catch(error => {
+        console.error('Prisma Cloud login error:', error);
+      });
+
+      console.log('Trying to login to Cortex Cloud...');
+
+      const cortexClient = new CortexAPIClient({
+        accessKey: formData.cortexCloud.accessKey,
+        secretKey: formData.cortexCloud.keyId,
+        baseURL:   formData.cortexCloud.tenantUrl
+      });
+
+      cortexClient.makeLoginRequest().then(response => {
+        console.log('Cortex Cloud login response:', response);
+      })
+      .catch(error => {
+        console.error('Cortex Cloud login error:', error);
+      });
+      
+
+      // setIsAnimating(true);
+      
+      // // Start a "thread" for each selected item
+      // itemStatuses.forEach((item) => {
+      //   const processingTime = Math.floor(Math.random() * 9000) + 1000; // Random time between 1-10 seconds
+        
+      //   // Update status to in_progress
+      //   setItemStatuses(prev => prev.map(status => 
+      //     status.id === item.id 
+      //       ? { ...status, status: 'in_progress' as const }
+      //       : status
+      //   ));
+
+      //   // Simulate progress updates
+      //   let currentProgress = 0;
+      //   const intervalTime = processingTime / 100; // Split total time into 100 updates
+
+      //   const progressInterval = setInterval(() => {
+      //     currentProgress += 1;
+          
+      //     setItemStatuses(prev => prev.map(status => 
+      //       status.id === item.id 
+      //         ? { 
+      //             ...status, 
+      //             progress: Math.min(currentProgress, 100),
+      //             status: currentProgress >= 100 ? 'completed' as const : status.status
+      //           }
+      //         : status
+      //     ));
+
+      //     if (currentProgress >= 100) {
+      //       clearInterval(progressInterval);
+      //     }
+      //   }, intervalTime);
+      // });
     };
 
     window.addEventListener('start-migration', handleStartMigration);
