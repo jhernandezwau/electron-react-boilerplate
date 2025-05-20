@@ -127,19 +127,18 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
   const validateCloudCredentials = async (): Promise<ValidationResult> => {
     try {
       // Validar Prisma Cloud
-      if (!prismaClient) {
-        setPrismaClient(new PrismaAPIClient({
-          accessKey: formData.prismaCloud.accessKey,
-          secretKey: formData.prismaCloud.secretKey,
-          baseURL: formData.prismaCloud.apiUrl
-        }));
-      }
+      const newPrismaClient = new PrismaAPIClient({
+        accessKey: formData.prismaCloud.accessKey,
+        secretKey: formData.prismaCloud.secretKey,
+        baseURL: formData.prismaCloud.apiUrl
+      });
+      setPrismaClient(newPrismaClient);
 
       let prismaToken: string | undefined;
       let prismaValid = false;
 
       try {
-        const prismaResponse = await prismaClient?.makeLoginRequest();
+        const prismaResponse = await newPrismaClient.makeLoginRequest();
         prismaToken = prismaResponse?.data.token;
         prismaValid = true;
         console.log('Prisma Cloud login successful');
@@ -149,29 +148,34 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
       }
 
       // Validar Cortex Cloud
-      if (!cortexClient) {
-        setCortexClient(new CortexAPIClient({
-          accessKey: formData.cortexCloud.accessKey,
-          secretKey: formData.cortexCloud.keyId,
-          baseURL: formData.cortexCloud.tenantUrl
-        }));
-      }
+      const newCortexClient = new CortexAPIClient({
+        accessKey: formData.cortexCloud.accessKey,
+        secretKey: formData.cortexCloud.keyId,
+        baseURL: formData.cortexCloud.tenantUrl
+      });
+      setCortexClient(newCortexClient);
 
       let cortexToken: string | undefined;
       let cortexValid = false;
 
       try {
         const proxyUrl = await window.electron.getProxyUrl();
-        cortexClient?.setProxyUrl(proxyUrl);
+        console.log('Got proxy URL:', proxyUrl);
+        newCortexClient.setProxyUrl(proxyUrl);
         
-        const cortexResponse = await cortexClient?.makeLoginRequest();
+        console.log('Attempting Cortex login...');
+        const cortexResponse = await newCortexClient.makeLoginRequest();
+        console.log('Cortex response:', cortexResponse);
         
-        if (cortexResponse?.data === true || (typeof cortexResponse?.data === 'object' && cortexResponse?.data.token)) {
+        if (cortexResponse && (cortexResponse.data === true || (typeof cortexResponse.data === 'object' && cortexResponse.data.token))) {
           cortexValid = true;
-          if (typeof cortexResponse?.data === 'object') {
-            cortexToken = cortexResponse?.data.token;
+          if (typeof cortexResponse.data === 'object' && cortexResponse.data.token) {
+            cortexToken = cortexResponse.data.token;
           }
           console.log('Cortex Cloud login successful');
+        } else {
+          console.log('Cortex response was not in expected format:', cortexResponse);
+          cortexValid = false;
         }
       } catch (error) {
         console.error('Cortex Cloud login error:', error);
@@ -185,6 +189,7 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
         cortexToken
       };
     } catch (error) {
+      console.error('General validation error:', error);
       return {
         prismaValid: false,
         cortexValid: false,
