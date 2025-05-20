@@ -2,6 +2,44 @@ import React, { useState, useEffect } from 'react';
 import PrismaAPIClient from '@configurations/prisma_client';
 import CortexAPIClient from '@configurations/cortex_client';
 
+type IngestorKey = 'ootbPolicies' | 'customYaml' | 'enforcementRules' | 'repository' | 'secretsHistory' | 'validateSecrets';
+
+const ingestors: Record<IngestorKey, {
+  endpoint: string;
+  params: Record<string, any>;
+}> = {
+  ootbPolicies: {
+    endpoint: '/v2/policy',
+    params: {
+      'policy.subtype': ['build', 'run_and_build'],
+      'policy.policyMode': 'redlock_default'
+    }
+  },
+  customYaml: {
+    endpoint: '/v2/policy',
+    params: {
+      'policy.subtype': ['build', 'run_and_build'],
+      'policy.policyMode': 'custom'
+    }
+  },
+  enforcementRules: {
+    endpoint: '/code/api/v1/enforcement-rules',
+    params: {}
+  },
+  repository: {
+    endpoint: '/bridgecrew/api/v1/integrations',
+    params: {}
+  },
+  secretsHistory: {
+    endpoint: '/bridgecrew/api/v1/customer/configurations/secretsHistory',
+    params: {}
+  },
+  validateSecrets: {
+    endpoint: '/bridgecrew/api/v1/customer/configurations/secretsValidate',
+    params: {}
+  }
+};
+
 interface ReviewViewProps {
   formData: {
     prismaCloud: {
@@ -54,6 +92,9 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [itemStatuses, setItemStatuses] = useState<ItemStatus[]>([]);
 
+  const [prismaClient, setPrismaClient] = useState<PrismaAPIClient | null>(null);
+  const [cortexClient, setCortexClient] = useState<CortexAPIClient | null>(null);
+
   const itemLabels: { [key: string]: string } = {
     customYaml: 'Custom YAML Policies',
     repository: 'Repository Selection',
@@ -86,18 +127,20 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
   const validateCloudCredentials = async (): Promise<ValidationResult> => {
     try {
       // Validar Prisma Cloud
-      const prismaClient = new PrismaAPIClient({
-        accessKey: formData.prismaCloud.accessKey,
-        secretKey: formData.prismaCloud.secretKey,
-        baseURL: formData.prismaCloud.apiUrl
-      });
+      if (!prismaClient) {
+        setPrismaClient(new PrismaAPIClient({
+          accessKey: formData.prismaCloud.accessKey,
+          secretKey: formData.prismaCloud.secretKey,
+          baseURL: formData.prismaCloud.apiUrl
+        }));
+      }
 
       let prismaToken: string | undefined;
       let prismaValid = false;
 
       try {
-        const prismaResponse = await prismaClient.makeLoginRequest();
-        prismaToken = prismaResponse.data.token;
+        const prismaResponse = await prismaClient?.makeLoginRequest();
+        prismaToken = prismaResponse?.data.token;
         prismaValid = true;
         console.log('Prisma Cloud login successful');
       } catch (error) {
@@ -106,25 +149,27 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
       }
 
       // Validar Cortex Cloud
-      const cortexClient = new CortexAPIClient({
-        accessKey: formData.cortexCloud.accessKey,
-        secretKey: formData.cortexCloud.keyId,
-        baseURL: formData.cortexCloud.tenantUrl
-      });
+      if (!cortexClient) {
+        setCortexClient(new CortexAPIClient({
+          accessKey: formData.cortexCloud.accessKey,
+          secretKey: formData.cortexCloud.keyId,
+          baseURL: formData.cortexCloud.tenantUrl
+        }));
+      }
 
       let cortexToken: string | undefined;
       let cortexValid = false;
 
       try {
         const proxyUrl = await window.electron.getProxyUrl();
-        cortexClient.setProxyUrl(proxyUrl);
+        cortexClient?.setProxyUrl(proxyUrl);
         
-        const cortexResponse = await cortexClient.makeLoginRequest();
+        const cortexResponse = await cortexClient?.makeLoginRequest();
         
-        if (cortexResponse.data === true || (typeof cortexResponse.data === 'object' && cortexResponse.data.token)) {
+        if (cortexResponse?.data === true || (typeof cortexResponse?.data === 'object' && cortexResponse?.data.token)) {
           cortexValid = true;
-          if (typeof cortexResponse.data === 'object') {
-            cortexToken = cortexResponse.data.token;
+          if (typeof cortexResponse?.data === 'object') {
+            cortexToken = cortexResponse?.data.token;
           }
           console.log('Cortex Cloud login successful');
         }
@@ -160,6 +205,24 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
         alert(errorMessage);
         return;
       }
+
+      // We print the selected items
+      console.log('Selected items:', selectedItems);
+
+      // For each item, we call the ingestor endpoint
+      for (const item of selectedItems) {
+        const ingestor = ingestors[item as IngestorKey];
+        if (!validationResult.prismaToken) continue;
+        const ingestorResponse = await prismaClient?.makeIngestorRequest(ingestor.endpoint, ingestor.params, validationResult.prismaToken);
+        console.log(`Ingestor response for ${item}:`, ingestorResponse);
+      }
+
+      // // Iterate over the selected items and call the ingestor endpoint
+      // for (const item of selectedItems) {
+      //   const ingestor = ingestors[item as IngestorKey];
+      //   const ingestorResponse = await prismaClient?.makeIngestorRequest(ingestor.endpoint, ingestor.params);
+      //   console.log('Ingestor response:', ingestorResponse);
+      // }
 
       //   // Simulate progress updates
       //   let currentProgress = 0;

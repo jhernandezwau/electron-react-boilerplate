@@ -13,6 +13,13 @@ interface LoginResponse {
   status: number;
 }
 
+interface IngestorResponse {
+  data: {
+    ingestor_data: string;
+  };
+  status: number;
+}
+
 class PrismaAPIClient {
   private accessKey: string;
   private secretKey: string;
@@ -39,6 +46,20 @@ class PrismaAPIClient {
 
     return {
       data: response.data,
+      status: response.status
+    };
+  }
+
+  async makeIngestorRequest(endpoint: string, params: any, accessToken: string): Promise<IngestorResponse> {
+    const url = `${this.baseURL}${endpoint}`;
+    console.log('Trying to call:', url);
+    const headers = {
+      "Content-Type": "application/json",
+      "x-redlock-auth": accessToken
+    }
+    const response = await axios.get(url, { params, headers });
+    return {
+      data: response.data as { ingestor_data: string },
       status: response.status
     };
   }
