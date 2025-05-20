@@ -27,6 +27,14 @@ interface ItemStatus {
   progress: number;
 }
 
+interface ValidationResult {
+  prismaValid: boolean;
+  cortexValid: boolean;
+  prismaToken?: string;
+  cortexToken?: string;
+  error?: string;
+}
+
 // Acceder a la API de Electron expuesta en preload
 declare global {
   interface Window {
@@ -75,78 +83,83 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
     }
   }, [itemStatuses]);
 
-  // Handle migration start
-  useEffect(() => {
-    const handleStartMigration = async () => {
-      
-      
-      console.log('Starting migration...');
-
-      console.log('Trying to login to Prisma Cloud...');
-
-      const client = new PrismaAPIClient({
+  const validateCloudCredentials = async (): Promise<ValidationResult> => {
+    try {
+      // Validar Prisma Cloud
+      const prismaClient = new PrismaAPIClient({
         accessKey: formData.prismaCloud.accessKey,
         secretKey: formData.prismaCloud.secretKey,
-        baseURL:   formData.prismaCloud.apiUrl
+        baseURL: formData.prismaCloud.apiUrl
       });
 
-      client.makeLoginRequest().then(response => {
-        console.log('Prisma Cloud login response:', response);
-        const token = response.data.token;
-        console.log('Prisma Cloud token:', token);
-      })
-      .catch(error => {
+      let prismaToken: string | undefined;
+      let prismaValid = false;
+
+      try {
+        const prismaResponse = await prismaClient.makeLoginRequest();
+        prismaToken = prismaResponse.data.token;
+        prismaValid = true;
+        console.log('Prisma Cloud login successful');
+      } catch (error) {
         console.error('Prisma Cloud login error:', error);
-      });
+        prismaValid = false;
+      }
 
-      console.log('Trying to login to Cortex Cloud...');
-
-      // Crear el cliente Cortex
+      // Validar Cortex Cloud
       const cortexClient = new CortexAPIClient({
         accessKey: formData.cortexCloud.accessKey,
         secretKey: formData.cortexCloud.keyId,
-        baseURL:   formData.cortexCloud.tenantUrl
+        baseURL: formData.cortexCloud.tenantUrl
       });
 
+      let cortexToken: string | undefined;
+      let cortexValid = false;
+
       try {
-        // Obtener la URL del proxy desde el proceso principal
         const proxyUrl = await window.electron.getProxyUrl();
-        console.log('Using proxy URL:', proxyUrl);
-        
-        // Configurar el cliente para usar el proxy
         cortexClient.setProxyUrl(proxyUrl);
         
-        // Hacer la solicitud de login
-        const response = await cortexClient.makeLoginRequest();
-        console.log('Cortex Cloud login response:', response);
+        const cortexResponse = await cortexClient.makeLoginRequest();
         
-        // Verificar si la autenticación fue exitosa
-        if (response.data === true || (typeof response.data === 'object' && response.data.token)) {
-          console.log('Cortex Cloud authentication successful');
-          // Aquí puedes actualizar el estado para mostrar éxito
-        } else {
-          console.error('Cortex Cloud authentication failed: Invalid credentials');
-          // Aquí puedes mostrar un mensaje de error al usuario
-          alert('Error de autenticación en Cortex Cloud: Credenciales inválidas');
+        if (cortexResponse.data === true || (typeof cortexResponse.data === 'object' && cortexResponse.data.token)) {
+          cortexValid = true;
+          if (typeof cortexResponse.data === 'object') {
+            cortexToken = cortexResponse.data.token;
+          }
+          console.log('Cortex Cloud login successful');
         }
       } catch (error) {
         console.error('Cortex Cloud login error:', error);
-        alert('Error de conexión con Cortex Cloud');
+        cortexValid = false;
       }
-      
 
-      // setIsAnimating(true);
+      return {
+        prismaValid,
+        cortexValid,
+        prismaToken,
+        cortexToken
+      };
+    } catch (error) {
+      return {
+        prismaValid: false,
+        cortexValid: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
+  };
+
+  // Handle migration start
+  useEffect(() => {
+    const handleStartMigration = async () => {
+      console.log('Starting migration...');
       
-      // // Start a "thread" for each selected item
-      // itemStatuses.forEach((item) => {
-      //   const processingTime = Math.floor(Math.random() * 9000) + 1000; // Random time between 1-10 seconds
-        
-      //   // Update status to in_progress
-      //   setItemStatuses(prev => prev.map(status => 
-      //     status.id === item.id 
-      //       ? { ...status, status: 'in_progress' as const }
-      //       : status
-      //   ));
+      const validationResult = await validateCloudCredentials();
+      
+      if (!validationResult.prismaValid || !validationResult.cortexValid) {
+        const errorMessage = `Failed to validate credentials:\n${!validationResult.prismaValid ? '- Prisma Cloud authentication failed\n' : ''}${!validationResult.cortexValid ? '- Cortex Cloud authentication failed\n' : ''}${validationResult.error ? `Error: ${validationResult.error}` : ''}`;
+        alert(errorMessage);
+        return;
+      }
 
       //   // Simulate progress updates
       //   let currentProgress = 0;
