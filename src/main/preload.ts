@@ -22,6 +22,7 @@ const electronHandler = {
       ipcRenderer.once(channel, (_event, ...args) => func(...args));
     },
   },
+  getProxyUrl: () => ipcRenderer.invoke('get-proxy-url'),
 };
 
 contextBridge.exposeInMainWorld('electron', electronHandler);

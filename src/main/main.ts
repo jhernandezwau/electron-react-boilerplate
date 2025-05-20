@@ -14,6 +14,7 @@ import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
+import { startProxyServer } from './proxy-server';
 
 class AppUpdater {
   constructor() {
@@ -29,6 +30,11 @@ ipcMain.on('ipc-example', async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
   console.log(msgTemplate(arg));
   event.reply('ipc-example', msgTemplate('pong'));
+});
+
+// Añadir canal IPC para obtener la URL del proxy
+ipcMain.handle('get-proxy-url', async () => {
+  return 'http://localhost:3000/proxy-api';
 });
 
 if (process.env.NODE_ENV === 'production') {
@@ -127,6 +133,9 @@ app.on('window-all-closed', () => {
 app
   .whenReady()
   .then(() => {
+    // Iniciar el servidor proxy
+    startProxyServer();
+    
     createWindow();
     app.on('activate', () => {
       // On macOS it's common to re-create a window in the app when the

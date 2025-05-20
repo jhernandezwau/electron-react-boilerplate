@@ -7,9 +7,7 @@ interface ClientConfig {
 }
 
 interface LoginResponse {
-  data: {
-    token: string;
-  };
+  data: boolean | { token: string };
   status: number;
 }
 
@@ -17,6 +15,7 @@ class CortexAPIClient {
   private accessKey: string;
   private secretKey: string;
   private baseURL: string;
+  private proxyUrl: string | null = null;
 
   constructor(config: ClientConfig) {
     this.accessKey = config.accessKey;
@@ -24,16 +23,27 @@ class CortexAPIClient {
     this.baseURL = config.baseURL;
   }
 
+  // Método para establecer la URL del proxy
+  setProxyUrl(url: string) {
+    this.proxyUrl = url;
+  }
+
   async makeLoginRequest(): Promise<LoginResponse> {
-    const url = `${this.baseURL}/api_keys/validate/`;
+    // Usar el proxy si está disponible
+    const url = this.proxyUrl 
+      ? `${this.proxyUrl}/api_keys/validate/` 
+      : `${this.baseURL}/api_keys/validate/`;
     
-    // We need to create the headers with the access key and secret key
+    // Configurar los headers con las credenciales
     const headers = {
       'Authorization': this.accessKey,
-      'x-xdr-auth-id': this.secretKey
+      'x-xdr-auth-id': this.secretKey,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
     };
 
-    const response = await axios.post<{ token: string }>(url, {}, {
+    // Hacer la solicitud a través del proxy
+    const response = await axios.post<boolean | { token: string }>(url, {}, {
       headers: headers
     });
 

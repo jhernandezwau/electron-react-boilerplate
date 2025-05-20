@@ -27,6 +27,20 @@ interface ItemStatus {
   progress: number;
 }
 
+// Acceder a la API de Electron expuesta en preload
+declare global {
+  interface Window {
+    electron: {
+      ipcRenderer: {
+        sendMessage: (channel: string, ...args: any[]) => void;
+        on: (channel: string, func: (...args: any[]) => void) => void;
+        once: (channel: string, func: (...args: any[]) => void) => void;
+      };
+      getProxyUrl: () => Promise<string>;
+    };
+  }
+}
+
 export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
   const [progress, setProgress] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -63,7 +77,7 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
 
   // Handle migration start
   useEffect(() => {
-    const handleStartMigration = () => {
+    const handleStartMigration = async () => {
       
       
       console.log('Starting migration...');
@@ -87,18 +101,38 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
 
       console.log('Trying to login to Cortex Cloud...');
 
+      // Crear el cliente Cortex
       const cortexClient = new CortexAPIClient({
         accessKey: formData.cortexCloud.accessKey,
         secretKey: formData.cortexCloud.keyId,
         baseURL:   formData.cortexCloud.tenantUrl
       });
 
-      cortexClient.makeLoginRequest().then(response => {
+      try {
+        // Obtener la URL del proxy desde el proceso principal
+        const proxyUrl = await window.electron.getProxyUrl();
+        console.log('Using proxy URL:', proxyUrl);
+        
+        // Configurar el cliente para usar el proxy
+        cortexClient.setProxyUrl(proxyUrl);
+        
+        // Hacer la solicitud de login
+        const response = await cortexClient.makeLoginRequest();
         console.log('Cortex Cloud login response:', response);
-      })
-      .catch(error => {
+        
+        // Verificar si la autenticación fue exitosa
+        if (response.data === true || (typeof response.data === 'object' && response.data.token)) {
+          console.log('Cortex Cloud authentication successful');
+          // Aquí puedes actualizar el estado para mostrar éxito
+        } else {
+          console.error('Cortex Cloud authentication failed: Invalid credentials');
+          // Aquí puedes mostrar un mensaje de error al usuario
+          alert('Error de autenticación en Cortex Cloud: Credenciales inválidas');
+        }
+      } catch (error) {
         console.error('Cortex Cloud login error:', error);
-      });
+        alert('Error de conexión con Cortex Cloud');
+      }
       
 
       // setIsAnimating(true);
