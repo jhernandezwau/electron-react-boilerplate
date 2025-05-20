@@ -162,8 +162,6 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
         const proxyUrl = await window.electron.getProxyUrl();
         console.log('Got proxy URL:', proxyUrl);
         newCortexClient.setProxyUrl(proxyUrl);
-        
-        console.log('Attempting Cortex login...');
         const cortexResponse = await newCortexClient.makeLoginRequest();
         console.log('Cortex response:', cortexResponse);
         
@@ -198,6 +196,49 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
     }
   };
 
+  // Handle parallel ingestion for a single item
+  const handleItemIngestion = async (
+    item: string, 
+    prismaToken: string,
+    updateProgress: (progress: number) => void
+  ) => {
+    try {
+      const ingestor = ingestors[item as IngestorKey];
+      
+      // Update status to in_progress
+      setItemStatuses(prev => prev.map(status =>
+        status.id === item
+          ? { ...status, status: 'in_progress' as const }
+          : status
+      ));
+
+      const ingestorResponse = await prismaClient?.makeIngestorRequest(
+        ingestor.endpoint, 
+        ingestor.params, 
+        prismaToken
+      );
+
+      // Update status to completed
+      setItemStatuses(prev => prev.map(status =>
+        status.id === item
+          ? { ...status, status: 'completed' as const, progress: 100 }
+          : status
+      ));
+
+      console.log(`Ingestor response for ${item}:`, ingestorResponse);
+      return { item, success: true };
+    } catch (error) {
+      console.error(`Error in ingestor ${item}:`, error);
+      // Update status to show error (you might want to add an error state)
+      setItemStatuses(prev => prev.map(status =>
+        status.id === item
+          ? { ...status, status: 'completed' as const, progress: 100 }
+          : status
+      ));
+      return { item, success: false, error };
+    }
+  };
+
   // Handle migration start
   useEffect(() => {
     const handleStartMigration = async () => {
@@ -211,46 +252,41 @@ export function ReviewView({ formData, selectedItems }: ReviewViewProps) {
         return;
       }
 
-      // We print the selected items
-      console.log('Selected items:', selectedItems);
-
-      // For each item, we call the ingestor endpoint
-      for (const item of selectedItems) {
-        const ingestor = ingestors[item as IngestorKey];
-        if (!validationResult.prismaToken) continue;
-        const ingestorResponse = await prismaClient?.makeIngestorRequest(ingestor.endpoint, ingestor.params, validationResult.prismaToken);
-        console.log(`Ingestor response for ${item}:`, ingestorResponse);
+      if (!validationResult.prismaToken) {
+        console.error('No Prisma token available');
+        return;
       }
 
-      // // Iterate over the selected items and call the ingestor endpoint
-      // for (const item of selectedItems) {
-      //   const ingestor = ingestors[item as IngestorKey];
-      //   const ingestorResponse = await prismaClient?.makeIngestorRequest(ingestor.endpoint, ingestor.params);
-      //   console.log('Ingestor response:', ingestorResponse);
-      // }
+      // Create an array of promises for parallel execution
+      const ingestorPromises = selectedItems.map(item => 
+        handleItemIngestion(
+          item,
+          validationResult.prismaToken!,
+          (progress) => {
+            setItemStatuses(prev => prev.map(status =>
+              status.id === item
+                ? { ...status, progress }
+                : status
+            ));
+          }
+        )
+      );
 
-      //   // Simulate progress updates
-      //   let currentProgress = 0;
-      //   const intervalTime = processingTime / 100; // Split total time into 100 updates
+      try {
+        // Execute all ingestors in parallel
+        const results = await Promise.all(ingestorPromises);
+        
+        // Log results
+        results.forEach(result => {
+          if (!result.success) {
+            console.error(`Failed to process ${result.item}:`, result.error);
+          }
+        });
 
-      //   const progressInterval = setInterval(() => {
-      //     currentProgress += 1;
-          
-      //     setItemStatuses(prev => prev.map(status => 
-      //       status.id === item.id 
-      //         ? { 
-      //             ...status, 
-      //             progress: Math.min(currentProgress, 100),
-      //             status: currentProgress >= 100 ? 'completed' as const : status.status
-      //           }
-      //         : status
-      //     ));
-
-      //     if (currentProgress >= 100) {
-      //       clearInterval(progressInterval);
-      //     }
-      //   }, intervalTime);
-      // });
+        console.log('All ingestions completed');
+      } catch (error) {
+        console.error('Error during parallel ingestion:', error);
+      }
     };
 
     window.addEventListener('start-migration', handleStartMigration);
